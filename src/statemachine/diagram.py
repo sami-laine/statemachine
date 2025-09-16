@@ -65,25 +65,26 @@ def create_state_diagram(state_machine: StateMachine) -> str:
 
     See also https://mermaid.js.org/syntax/stateDiagram.html.
     """
-    style_definitions = ["classDef FinalState color:white, fill:black"]
-
     initial_state = state_machine.initial_state
-    initial_state_id = _get_id(initial_state.name)
-    state_names_by_ids: dict[str, str] = {initial_state_id: initial_state.name}
-    transitions = [f"[*] --> {initial_state_id}"]
+    state_names_by_ids: dict[str, str] = {}
+    transitions = []
 
     for t in state_machine.transitions():
         to_state_id = _get_id(t.to_state.name)
-        state_names_by_ids[to_state_id] = t.to_state.name
 
         for from_state in t.from_states:
-            from_state_id = _get_id(from_state.name)
-            state_names_by_ids[from_state_id] = from_state.name
-
-            line = f"{from_state_id} --> {to_state_id}"
+            if from_state is initial_state:
+                line = f"[*] --> "
+            else:
+                from_state_id = _get_id(from_state.name)
+                state_names_by_ids[from_state_id] = from_state.name
+                line = f"{from_state_id} --> "
 
             if isinstance(t.to_state, FinalState):
-                line += ":::FinalState"
+                line += "[*]"
+            else:
+                state_names_by_ids[to_state_id] = t.to_state.name
+                line += f"{to_state_id}"
 
             if t.name or t.automatic:
                 line += " : "
@@ -97,7 +98,7 @@ def create_state_diagram(state_machine: StateMachine) -> str:
             transitions.append(line)
 
     state_definitions = [f"{id}: {name}" for id, name in state_names_by_ids.items()]
-    return "\n".join(style_definitions + [""] + state_definitions + [""] + transitions)
+    return "\n".join(state_definitions + [""] + transitions)
 
 
 def _get_id(name: str) -> str:
