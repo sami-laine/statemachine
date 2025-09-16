@@ -24,7 +24,7 @@ class State(Generic[T]):
                 pass
     """
 
-    _name: str = None
+    _name: Optional[str] = None
     _state_counter = itertools.count(1)
 
     def __init__(self, name: Optional[str] = None):
@@ -61,6 +61,10 @@ class State(Generic[T]):
         Caller must handle the exception. The caller can also trigger a state
         transition into an error state.
         """
+
+
+class InitialState(State):
+    """Default initial state."""
 
 
 class FinalState(State):

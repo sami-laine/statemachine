@@ -7,6 +7,9 @@ from .state import AnyState
 from .state import State
 
 
+Callback_Type = Callable[[Optional[T]], None]
+
+
 class Transition(Generic[T]):
     """State transition."""
 
@@ -16,7 +19,7 @@ class Transition(Generic[T]):
         to_state: State,
         automatic: bool = False,
         name: Optional[str] = None,
-        callback: Optional[Callable] = None,
+        callback: Optional[Callback_Type] = None,
     ):
         self.from_states = (
             from_states if isinstance(from_states, list) else [from_states]

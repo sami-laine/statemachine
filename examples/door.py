@@ -83,7 +83,7 @@ class DoorStateMachine(StateMachine[Actuator]):
         closing = Closing()
         closed = State("Closed")
 
-        # Set the initial state to 'opened'.
+        # Use 'Opened' as initial state
         self.initial_state = self.opened
 
         # Define transitions

@@ -18,16 +18,12 @@ class StateMachineError(Exception):
     """Generic base for state machine errors."""
 
 
-class InitialStateNotSetError(StateMachineError):
-    """Raised if initial state is not set."""
 
-    DEFAULT_MESSAGE = (
-        "Initial state not set. Use set_initial_state(state) to set "
-        "the initial state before calling start()."
-    )
+class ConfigurationError(StateMachineError):
+    """Configuration error.
 
-    def __init__(self, msg: typing.Optional[str] = None):
-        super().__init__(msg or self.DEFAULT_MESSAGE)
+    Raised for example if initial state is not used.
+    """
 
 
 class AlreadyStartedError(StateMachineError):

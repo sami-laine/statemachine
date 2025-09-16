@@ -81,8 +81,13 @@ class ExampleMachine(StateMachine):
 
 ## Initial State
 
-Define initial state by using `initial_state`. State machine is expected to have exactly one initial state.
-`InitialStateNotSetError` is raised if not set.
+State machine is expecting initial state (`initial_state`) to be defined. State machine predefines an initial 
+state but it can be replaced with user defined State.
+
+`ConfigurationError` is raised if state machine detects that `initial_state` is not connected to any other state. 
+This is likely a configuration error.
+
+Initial state can be set by assigning a State to `initial_state`. 
 
 ```Python
 from statemachine import StateMachine, State
@@ -97,6 +102,8 @@ class ExampleMachine(StateMachine):
         # Set initial state
         self.initial_state = a
 ```
+
+
 
 ## Final State
 

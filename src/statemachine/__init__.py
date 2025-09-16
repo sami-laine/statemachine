@@ -5,6 +5,7 @@ T = TypeVar("T")
 from ._version import __version__
 from .errors import *
 from .state import State
+from .state import InitialState
 from .state import FinalState
 from .state import AnyState
 from .transition import Transition

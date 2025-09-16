@@ -10,17 +10,16 @@ class ExampleMachine(StateMachine):
     def __init__(self):
         super().__init__()
 
-        a = State()
-        b = State()
-        c = State()
+        a = State("A")
+        b = State("B")
+        c = State("C")
         f = FinalState()
 
-        self.connect(a, b, automatic=True)
-        self.connect(a, c, name="ac", automatic=True)
-        self.connect(b, f, name="bf")
-        self.connect(c, f, name="cf")
-
-        self.initial_state = a
+        self.connect(self.initial_state, a, automatic=True)
+        self.ab = self.connect(a, b)  # Not named
+        self.ac = self.connect(a, c, name="ab")
+        self.connect(b, f, name="bf", automatic=True)
+        self.connect(c, f, name="cf", automatic=True)
 
 
 sm = ExampleMachine()

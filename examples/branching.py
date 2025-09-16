@@ -78,10 +78,8 @@ class MyStateMachine(StateMachine[Data]):
         waiting = Waiting()
         final_state = FinalState()
 
-        # Set the initial state
-        self.initial_state = staging
-
         # Define automatic transitions
+        self.connect(self.initial_state, staging, automatic=True)
         self.connect(staging, processing, automatic=True, name="process")
         self.connect(staging, waiting, automatic=True, name="wait")
         self.connect(waiting, staging, automatic=True, name="stage")

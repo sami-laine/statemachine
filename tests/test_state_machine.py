@@ -6,7 +6,7 @@ import pytest
 from statemachine import AlreadyStartedError
 from statemachine import ErrorInfo, StateError
 from statemachine import FinalState
-from statemachine import InitialStateNotSetError
+from statemachine import ConfigurationError
 from statemachine import InvalidTransitionError
 from statemachine import NotAliveError
 from statemachine import State
@@ -58,15 +58,12 @@ class AutomaticStateMachine(StateMachine):
 
 
 def test_initial_state():
-    class Machine(StateMachine):
-        def __init__(self):
-            super().__init__()
+    sm = StateMachine()
 
-            self.a = State()
-            self.b = FinalState()
+    with pytest.raises(ValueError):
+        sm.initial_state = None
 
-    sm = Machine()
-    with pytest.raises(InitialStateNotSetError):
+    with pytest.raises(ConfigurationError):
         sm.start()
 
 

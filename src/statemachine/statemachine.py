@@ -1,10 +1,9 @@
 import logging
 import threading
 import time
-from functools import partial
+import types
 from threading import Lock
 from traceback import format_tb
-from typing import Callable
 from typing import Generic
 from typing import Optional
 
@@ -13,14 +12,16 @@ from .errors import AlreadyStartedError
 from .errors import ErrorInfo
 from .errors import FinalStateReached
 from .errors import Halted
-from .errors import InitialStateNotSetError
+from .errors import ConfigurationError
 from .errors import InvalidTransitionError
 from .errors import NoTransitionAvailable
 from .errors import NotAliveError
 from .errors import StateError
 from .errors import TransitionError
 from .state import FinalState
+from .state import InitialState
 from .state import State
+from .transition import Callback_Type
 from .transition import GlobalTransition
 from .transition import Transition
 
@@ -63,8 +64,8 @@ class StateMachine(Generic[T]):
         self._state_changed_condition = threading.Condition()
         self._run = threading.Event()
         self._stop = threading.Event()
-        self.initial_state: Optional[State] = None
-        self._current_state: Optional[State] = None
+        self._initial_state: State = InitialState(name="InitialState")
+        self._current_state: State = self.initial_state
         self._transitions: list[Transition] = []
 
     def __str__(self):
@@ -73,11 +74,21 @@ class StateMachine(Generic[T]):
     def __contains__(self, state: State):
         return self.state is state
 
+    @property
+    def initial_state(self) -> State:
+        return self._initial_state
+
+    @initial_state.setter
+    def initial_state(self, state: State):
+        if state is None:
+            raise ValueError("Initial state cannot be set as None.")
+        self._initial_state = state
+
     def connect(
         self,
         from_states: State | list[State],
         to_state: State,
-        callback: Optional[Callable] = None,
+        callback: Optional[Callback_Type] = None,
         automatic: bool = False,
         name: Optional[str] = None,
     ) -> Transition:
@@ -115,7 +126,7 @@ class StateMachine(Generic[T]):
     def add_global_transition(
         self,
         to_state: State,
-        callback: Optional[Callable] = None,
+        callback: Optional[Callback_Type] = None,
         automatic: bool = False,
         name: Optional[str] = None,
     ) -> Transition:
@@ -135,32 +146,32 @@ class StateMachine(Generic[T]):
         from_states: State | list[State],
         to_state: State,
         automatic: bool = False,
-        name: str = None,
-        callback: Optional[Callable] = None,
+        name: Optional[str] = None,
+        callback: Optional[Callback_Type] = None,
     ) -> Transition:
         """Create transition instance."""
-        transition = Transition(
+        transition: Transition = Transition(
             from_states=from_states,
             to_state=to_state,
             automatic=automatic,
             name=name,
             callback=callback,
         )
-        transition.trigger = partial(self.trigger, transition)
+        setattr(transition, "trigger", types.MethodType(self.trigger, transition))
         return transition
 
     def create_global_transition(
         self,
         to_state: State,
         automatic: bool = False,
-        name: str = None,
-        callback: Optional[Callable] = None,
+        name: Optional[str] = None,
+        callback: Optional[Callback_Type] = None,
     ) -> Transition:
         """Create transition instance."""
-        transition = GlobalTransition(
+        transition: Transition = GlobalTransition(
             to_state=to_state, automatic=automatic, name=name, callback=callback
         )
-        transition.trigger = partial(self.trigger, transition)
+        setattr(transition, "trigger", types.MethodType(self.trigger, transition))
         return transition
 
     def register_transition(self, transition: Transition):
@@ -201,6 +212,12 @@ class StateMachine(Generic[T]):
         """
         return not self._run.is_set()
 
+    def _is_initial_state_used(self) -> bool:
+        for t in self.transitions():
+            if self.initial_state in t.from_states:
+                return True
+        return False
+
     def start(self):
         """Start state machine.
 
@@ -211,8 +228,11 @@ class StateMachine(Generic[T]):
             if self.is_alive() or self._control_thread is not None:
                 raise AlreadyStartedError
 
-            if self.initial_state is None:
-                raise InitialStateNotSetError
+            if not self._is_initial_state_used():
+                raise ConfigurationError(
+                    "Initial state is not connected to any other state."
+                    "Use 'state_machine.connect(self.initial_state, other_state)' to connect."
+                )
 
             self._current_state = self.initial_state
             self._log_states()
@@ -306,12 +326,12 @@ class StateMachine(Generic[T]):
             raise NotAliveError
         self._run.set()
 
-    def can_transition(self, transition: Transition) -> bool:
-        """Check if a transition can be done.
+    def can_transition(self, from_state: State, transition: Transition) -> bool:
+        """Check if a transition can be done from given state.
 
         Checks if a state transition is valid and possible at this moment.
         """
-        return transition.can_transition_from(self.state) and transition.is_applicable(
+        return transition.can_transition_from(from_state) and transition.is_applicable(
             self.context
         )
 
@@ -323,7 +343,7 @@ class StateMachine(Generic[T]):
         """
         for t in self._automatic_transitions():
             try:
-                if self.can_transition(t):
+                if self.can_transition(self.state, t):
                     return t
             except Exception as error:
                 logger.exception(error)
@@ -417,7 +437,10 @@ class StateMachine(Generic[T]):
 
     @property
     def state(self) -> State:
-        """Current state machine state."""
+        """Current state machine state.
+
+        Returns current state machine state unless not started then returns None.
+        """
         return self._current_state
 
     def trigger(self, transition: Transition):
@@ -476,7 +499,7 @@ class StateMachine(Generic[T]):
 
         logger.debug("State transition completed successfully.")
 
-    def _set_state(self, state: State, callback: Callable = False):
+    def _set_state(self, state: State, callback: Optional[Callback_Type] = None):
         if state is None:
             raise ValueError("Cannot set state as None.")
 
@@ -492,7 +515,8 @@ class StateMachine(Generic[T]):
                 self._state_changed_condition.notify_all()
 
             try:
-                self._call_callback(callback)
+                if callback is not None:
+                    self._call_callback(callback)
                 self._call_on_entry_for(state)
                 self._call_on_state_applied(state)
 
@@ -508,9 +532,7 @@ class StateMachine(Generic[T]):
             logger.warning("Calling on_state_changed() caused an error: %s", error)
             logger.exception(error)
 
-    def _call_callback(self, callback: Callable):
-        if callback is None:
-            return
+    def _call_callback(self, callback: Callback_Type):
         logger.debug("Calling callback()' ...")
         callback(self.context)
         logger.debug("Calling callback()' completed successfully.")
