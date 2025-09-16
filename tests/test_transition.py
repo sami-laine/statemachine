@@ -12,7 +12,7 @@ class MyStateMachine(StateMachine):
         self.ab = self.connect(self.a, self.b, name="a → b")
         self.bc = self.connect(self.b, self.c, automatic=True)
         self.reset = self.add_global_transition(self.a)
-        
+
         self.initial_state = self.a
 
 
@@ -67,6 +67,3 @@ def test_callback():
     assert sm.callback_value == False
     sm.ab()
     assert sm.callback_value == True
-
-
-

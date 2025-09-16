@@ -10,4 +10,3 @@ from .state import AnyState
 from .transition import Transition
 from .transition import GlobalTransition
 from .statemachine import StateMachine
-

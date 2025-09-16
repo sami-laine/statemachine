@@ -53,6 +53,3 @@ def test_state_hooks():
     assert b.is_applicable_value == value
     assert b.on_entry_value == value
     assert b.on_exit_value == value
-
-
-

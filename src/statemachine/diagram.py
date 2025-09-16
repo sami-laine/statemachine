@@ -1,10 +1,10 @@
-from typing import Optional
 import logging
 import textwrap
 import time
 import webbrowser
 from string import Template
 from tempfile import NamedTemporaryFile
+from typing import Optional
 
 from statemachine import FinalState
 from statemachine import StateMachine
@@ -65,9 +65,7 @@ def create_state_diagram(state_machine: StateMachine) -> str:
 
     See also https://mermaid.js.org/syntax/stateDiagram.html.
     """
-    style_definitions = [
-        "classDef FinalState color:white, fill:black"
-    ]
+    style_definitions = ["classDef FinalState color:white, fill:black"]
 
     initial_state = state_machine.initial_state
     initial_state_id = _get_id(initial_state.name)
@@ -107,7 +105,9 @@ def _get_id(name: str) -> str:
     return name.replace(" ", "_").lower()
 
 
-def _create_html_page_with_state_diagram(name: str, diagram: str, template: str = HTML_TEMPLATE):
+def _create_html_page_with_state_diagram(
+    name: str, diagram: str, template: str = HTML_TEMPLATE
+):
     """Create a HTML page with given state diagram."""
     indented_text = textwrap.indent(diagram, " " * 6)
     return Template(template).safe_substitute(name=name, diagram=indented_text)
@@ -121,7 +121,9 @@ def _open_with_web_browser(content: str, suffix: str = ".html", delete: bool = T
 
     The temporary file gets deleted by default. Use `delete=False` to preserve the file.
     """
-    with NamedTemporaryFile(delete=delete, suffix=suffix, mode="w", encoding="utf-8") as fh:
+    with NamedTemporaryFile(
+        delete=delete, suffix=suffix, mode="w", encoding="utf-8"
+    ) as fh:
         fh.write(content)
         fh.flush()
 
@@ -137,4 +139,3 @@ def _open_with_web_browser(content: str, suffix: str = ".html", delete: bool = T
 def _open_web_page(filename: str):
     """Open a file on a web browser."""
     webbrowser.open(f"file:///{filename}")
-

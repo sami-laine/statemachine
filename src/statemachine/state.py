@@ -23,6 +23,7 @@ class State(Generic[T]):
             def on_exit(self, context: Context):
                 pass
     """
+
     _name: str = None
     _state_counter = itertools.count(1)
 

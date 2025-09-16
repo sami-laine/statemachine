@@ -74,12 +74,12 @@ class StateMachine(Generic[T]):
         return self.state is state
 
     def connect(
-            self,
-            from_states: State | list[State],
-            to_state: State,
-            callback: Optional[Callable] = None,
-            automatic: bool = False,
-            name: Optional[str] = None,
+        self,
+        from_states: State | list[State],
+        to_state: State,
+        callback: Optional[Callable] = None,
+        automatic: bool = False,
+        name: Optional[str] = None,
     ) -> Transition:
         """Connect states.
 
@@ -107,17 +107,17 @@ class StateMachine(Generic[T]):
             to_state=to_state,
             automatic=automatic,
             name=name,
-            callback=callback
+            callback=callback,
         )
         self.register_transition(transition)
         return transition
 
     def add_global_transition(
-            self,
-            to_state: State,
-            callback: Optional[Callable] = None,
-            automatic: bool = False,
-            name: Optional[str] = None
+        self,
+        to_state: State,
+        callback: Optional[Callable] = None,
+        automatic: bool = False,
+        name: Optional[str] = None,
     ) -> Transition:
         """Add a global transition.
 
@@ -125,46 +125,40 @@ class StateMachine(Generic[T]):
         `connect()`.
         """
         transition = self.create_global_transition(
-            to_state=to_state,
-            automatic=automatic,
-            name=name,
-            callback=callback
+            to_state=to_state, automatic=automatic, name=name, callback=callback
         )
         self.register_transition(transition)
         return transition
 
     def create_transition(
-            self,
-            from_states: State | list[State],
-            to_state: State,
-            automatic: bool = False,
-            name: str = None,
-            callback: Optional[Callable] = None
+        self,
+        from_states: State | list[State],
+        to_state: State,
+        automatic: bool = False,
+        name: str = None,
+        callback: Optional[Callable] = None,
     ) -> Transition:
         """Create transition instance."""
-        transition =  Transition(
+        transition = Transition(
             from_states=from_states,
             to_state=to_state,
             automatic=automatic,
             name=name,
-            callback=callback
+            callback=callback,
         )
         transition.trigger = partial(self.trigger, transition)
         return transition
 
     def create_global_transition(
-            self,
-            to_state: State,
-            automatic: bool = False,
-            name: str = None,
-            callback: Optional[Callable] = None
+        self,
+        to_state: State,
+        automatic: bool = False,
+        name: str = None,
+        callback: Optional[Callable] = None,
     ) -> Transition:
         """Create transition instance."""
         transition = GlobalTransition(
-            to_state=to_state,
-            automatic=automatic,
-            name=name,
-            callback=callback
+            to_state=to_state, automatic=automatic, name=name, callback=callback
         )
         transition.trigger = partial(self.trigger, transition)
         return transition
@@ -317,7 +311,9 @@ class StateMachine(Generic[T]):
 
         Checks if a state transition is valid and possible at this moment.
         """
-        return transition.can_transition_from(self.state) and transition.is_applicable(self.context)
+        return transition.can_transition_from(self.state) and transition.is_applicable(
+            self.context
+        )
 
     def get_next_transition(self) -> Optional[Transition]:
         """Get next transition.

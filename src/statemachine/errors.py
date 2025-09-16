@@ -20,6 +20,7 @@ class StateMachineError(Exception):
 
 class InitialStateNotSetError(StateMachineError):
     """Raised if initial state is not set."""
+
     DEFAULT_MESSAGE = (
         "Initial state not set. Use set_initial_state(state) to set "
         "the initial state before calling start()."
@@ -27,6 +28,7 @@ class InitialStateNotSetError(StateMachineError):
 
     def __init__(self, msg: typing.Optional[str] = None):
         super().__init__(msg or self.DEFAULT_MESSAGE)
+
 
 class AlreadyStartedError(StateMachineError):
     """State machine is already started."""

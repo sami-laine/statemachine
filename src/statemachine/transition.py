@@ -1,6 +1,6 @@
+from typing import Callable
 from typing import Generic
 from typing import Optional
-from typing import Callable
 
 from . import T
 from .state import AnyState
@@ -16,7 +16,7 @@ class Transition(Generic[T]):
         to_state: State,
         automatic: bool = False,
         name: Optional[str] = None,
-        callback: Optional[Callable] = None
+        callback: Optional[Callable] = None,
     ):
         self.from_states = (
             from_states if isinstance(from_states, list) else [from_states]
@@ -64,10 +64,16 @@ class GlobalTransition(Transition):
     """
 
     def __init__(
-            self,
-            to_state: State,
-            automatic: bool = False,
-            name: Optional[str] = None,
-            callback: Optional[Callable] = None
+        self,
+        to_state: State,
+        automatic: bool = False,
+        name: Optional[str] = None,
+        callback: Optional[Callable] = None,
     ):
-        super().__init__(from_states=AnyState(), to_state=to_state, automatic=automatic, name=name, callback=callback)
+        super().__init__(
+            from_states=AnyState(),
+            to_state=to_state,
+            automatic=automatic,
+            name=name,
+            callback=callback,
+        )
