@@ -4,7 +4,7 @@ from statemachine import State, StateMachine
 
 
 # Configure logging
-logging.basicConfig(format="%(levelname)s %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(levelname)s %(message)s", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -107,14 +107,19 @@ class DoorStateMachine(StateMachine[Actuator]):
 door = DoorStateMachine(context=Actuator())
 door.start()
 
+# Wait for the first actual state to be applied. Without waiting,
+# we may try to trigger `close` from the initial state.
+door.wait_next_state()
+
 # Wait until the door reaches the 'opened' state.
 # Without waiting the door begins closing before being opened.
 # door.wait(door.opened)
 
-# Trigger door closing in a separate thread.
+# Trigger door closing in a separate thread. This demonstrates
+# a multithreading use case.
 threading.Thread(target=door.close).start()
 
-# Optionally, trigger another open operation while the door is closing.
+# Trigger another open operation while the door is still closing.
 threading.Thread(target=door.open).start()
 
 # Wait until the door reaches the 'opened' state.

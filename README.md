@@ -1,7 +1,8 @@
 # Python State Machine Module
 
-This module provides a simple and flexible implementation of a **finite state machine**. It allows you to define **states**, **transitions**, and context-aware logic using a clean, 
-object-oriented API.
+This module provides a simple and flexible implementation of 
+a **[finite-state machine](https://en.wikipedia.org/wiki/Finite-state_machine)**. It allows you to define
+**states**, **transitions**, and context-aware logic using a clean, object-oriented API.
 
 It supports manual and automatic transitions, initial and final states, error handling
 and callbacks for state changes.
@@ -22,6 +23,7 @@ and callbacks for state changes.
 ```bash
 pip install -e .
 ```
+
 
 # 🚀 Quick Start
 
@@ -84,10 +86,10 @@ class ExampleMachine(StateMachine):
 State machine is expecting initial state (`initial_state`) to be defined. State machine predefines an initial 
 state but it can be replaced with user defined State.
 
-`ConfigurationError` is raised if state machine detects that `initial_state` is not connected to any other state. 
-This is likely a configuration error.
+`ConfigurationError` is raised if state machine detects that `initial_state` is no transitions to any other 
+state. This is likely a configuration error.
 
-Initial state can be set by assigning a State to `initial_state`. 
+Initial state can be set by assigning a `State` instance to `initial_state`. 
 
 ```Python
 from statemachine import StateMachine, State
@@ -102,8 +104,6 @@ class ExampleMachine(StateMachine):
         # Set initial state
         self.initial_state = a
 ```
-
-
 
 ## Final State
 
@@ -123,7 +123,6 @@ class ExampleMachine(StateMachine):
 ```
 
 Alternatively, you can raise the `FinalStateReached` exception inside a state hook.
-
 
 ## Subclassing State
 
@@ -150,6 +149,7 @@ class MyState(State[T]):
 * `on_entry(context)` Execute state specific logic when the state is activated.
 * `on_exit(context)` Clean up or cancel pending operations when leaving the state.
 
+`Context` and it usage is described a bit later.
 
 # 🔁 Transitions
 
@@ -173,30 +173,104 @@ class ExampleMachine(StateMachine[T]):
         self.connect(b, c, automatic=True)
 ```
 
-`connect()` returns `Transition` object. Transition object encapsulates the transition details and can be called 
-like any other callable. This makes it possible to use the transition objects like methods.
+`connect()` acts as a high-level convenience method. It wires together `from_state`, `to_state`, and 
+an optional `callback` function. 
 
-Internally `Transition` calls `trigger()`. 
+`connect()` instantiates and returns a `Transition` object that encapsulates the state transition details and
+can be called like any other callable. This makes it possible to use the transition objects like methods.
 
-
-## Triggering
+It somewhat equals to:
 
 ```python
+from statemachine import Transition
+
+transition = Transition(from_states, to_state, automatic, name, callback)
+state_machine.add_transition(transition)
+```
+
+Setting `automatic=True` allows the state machine to carry out the state transition automatically. 
+
+Optional `name` argument can be used to give a name for the state transition. State machine does not use
+the name directly, but it can be helpful to follow state transitions and with visualisation.
+
+## Transition Callback
+
+_Optionally_ user can give a **callable** that is called when the state transition occurs. 
+
+```python
+from statemachine import StateMachine, State, FinalState, T
+
+class ExampleMachine(StateMachine[T]):
+    def __init__(self):    
+        ...
+        
+        # Manual transition from a → b
+        transition = self.connect(a, b, self.on_a_b)
+
+    def on_a_b(self, context: T):
+        pass
+```
+
+**Callback** is called after exiting the previous state but before calling `on_entry()` for the applied state:
+
+```python
+current_state.on_exit()
+current_state = to_state
+callback()
+current_state.en_entry()
+```
+
+Note the difference between transition callbacks and `State` hooks; **Transition callbacks** are bound to a specific
+state transition (say, from _A_ to _B_) whereas state hooks are executed always when entering the state from
+any other state (e.g., from _A_ to _B_ but also from _C_ to _B_).
+
+## Triggering Transition
+
+**Automatic transitions** fire as soon as the source state becomes active.
+
+**Manual transition** can be triggered:
+
+```python
+state_machine.trigger(transition)
+```
+
+But, in addition, when `Transition` instance is created by `connect()` it is also possible to either
+
+```python
+transition.trigger()
+```
+
+or just call it like a any callable
+
+```python
+transition()
+```
+
+The latter is possible because `Transition` implements `__call__` and calls `trigger()` internally.
+
+## Exposing Transitions
+
+The following is possible because the `Transition` objects are _callable_
+```python
+from statemachine import StateMachine, State, FinalState
+
+class ExampleMachine(StateMachine):
+    def __init__(self):
+        super().__init__()        
+        
+        a = State()
+        b = State()
+        c = FinalState()
+
+        # Transition from a to b
+        self.a_to_b = self.connect(a, b)
+
 sm = ExampleMachine()
-sm.start()
-sm.transition()
+...
+sm.a_to_b()  # Trigger transition
 ```
 
-or 
-
-```python
-sm.transition.trigger()
-```
-
-* Manual: Call the transition `transition()` like any callable.
-* Automatic: Automatic transitions fire as soon as the source state becomes active.
-
-However, sometimes it might make sense to expose the transition objects via normal methods.
+It might make sense to expose the transition objects via normal methods.
 
 ```python
 from statemachine import StateMachine, State, FinalState
@@ -209,16 +283,16 @@ class ExampleMachine(StateMachine):
         b = State()
         c = FinalState()
 
-        self._transition = self.connect(a, b)
+        self._a_to_b = self.connect(a, b)
 
     def a_to_b(self):
-        self._transition.trigger()
+        self._a_to_b.trigger()
 ```
 
-This gives also a change to add additional logic before and after triggering the transition. However, it is good 
-to consider if the logic needs to be thread safe.
+This gives a change to add additional logic before and / or after triggering the transition. However, it is
+good to consider if the logic needs to be _thread safe_.
 
-It is also possible to overwrite stub methods like this:
+It is also possible to use a stub method like this:
 
 ```python
 from statemachine import StateMachine, State, FinalState
@@ -233,16 +307,16 @@ class ExampleMachine(StateMachine):
 
         self.a_to_b = self.connect(a, b)
 
-    def a_to_b(self): pass
+    def a_to_b(self): 
+        pass
 ```
 
-This helps for example **PyCharm**'s autocompletion to detect `a_to_b()` as a **method** - not as an **attribute**. This is 
-due how **PyCharm** analyses Python class signatures. 
-
+This helps for example **PyCharm**'s autocompletion to detect `a_to_b()` as a **method** - not as an **attribute**. 
+That is due how **PyCharm** analyses Python class signatures. 
 
 ## Multi-Source Transitions
 
-One transition can originate from several states:
+A transition can originate from several states:
 
 ```python
 
@@ -266,17 +340,17 @@ Global transition can originate from any state.
 ```python
 from statemachine import StateMachine, State
 
+
 class ExampleMachine(StateMachine):
     def __init__(self):
         super().__init__()
-        
+
         a = State()
         b = State()
         c = State()
-    
-        self.reset = self.add_global_transition(a)
-```
 
+        self.reset = self.connect_any(a)
+```
 
 ## ⌗ Context Object
 
@@ -311,7 +385,9 @@ class ExampleMachine(StateMachine[Context]):
         # Set initial state
         self.initial_state = a
 
-sm = ExampleMachine(Context())
+context = Context()
+
+sm = ExampleMachine(context)
 sm.start()
 sm.a_to_b()
 sm.join()
@@ -319,8 +395,10 @@ sm.join()
 print(sm.context.value)  # => 1
 ```
 
-The context can hold configuration, device handles, counters, or any runtime
-data your states need.
+The context can hold configuration, device handles, counters, or any runtime data your states need.
+The object type can be any Python type. 
+
+Notice also the usage of type hints.
 
 
 # 💥 Error Handling
@@ -354,14 +432,18 @@ class ExampleStateMachine(StateMachine):
 * If recovery isn’t possible, you can log the error and leave the machine halted or stop it.
 
 
-# 🔔 Callbacks
+# 🔔 State Machine Hooks
 
 Beyond `on_entry`/`on_exit`, the machine itself provides a few hooks:
 
-* `on_start()` Invoked when `start()` is called.
-* `on_state_changed(from_state, to_state)` Triggered after every successful transition.
-* `on_state_applied(state)` Called after state machine has fully applied a state. This includes calling state's `on_entry()`. 
-* `on_exit()` Called when the machine stops (via `stop()`, final state, or unhandled error).
+* `on_start()`:
+  * Invoked when `start()` is called.
+* `on_state_changed(from_state, to_state)`:
+  * Triggered after every successful transition.
+* `on_state_applied(state)`:
+  * Called after state machine has fully applied a state. This includes calling state's `on_entry()`. 
+* `on_exit()`:
+  * Called when the machine stops (via `stop()`, final state, or unhandled error).
 
 Override these methods to integrate with your application’s logging, UI updates, or metrics.
 
@@ -370,8 +452,8 @@ Override these methods to integrate with your application’s logging, UI update
 
 ## State Diagram
 
-You can how a state diagram by calling `show_state_diagram()`.
-It uses a default web browser to render and open the state diagram:
+You can show a state diagram of your state machine by calling `show_state_diagram()`.
+It uses a **default web browser** to render and open the **state diagram**:
 
 ```python
 from statemachine import StateMachine, State, FinalState
@@ -402,7 +484,25 @@ sm = ExampleMachine()
 show_state_diagram(sm)
 ```
 
-# Development
+
+# 🔄 Alternative Solutions 
+
+If you're looking for other state machine implementations or approaches, here are a few alternatives:
+
+* **[Python StateMachine](https://python-statemachine.readthedocs.io/en/latest/)**:
+  * Provides a pythonic and
+    expressive API for implementing state machines in sync or asynchonous Python codebases.
+
+* **[transitions](https://github.com/pytransitions/transitions)**:
+  * A lightweight, object-oriented Python library for finite state machines. It supports
+    hierarchical states, conditions, and callbacks.
+
+* **[Automat](https://github.com/glyph/automat)**:
+  * Designed for Python applications with a focus on correctness and declarative syntax. Built by
+    the Twisted team.
+
+
+# ⚙️ Development
 
 ## Create virtual environment
 

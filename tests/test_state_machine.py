@@ -42,7 +42,7 @@ class ABCStateMachine(StateMachine):
 
         self.ab = self.connect(self.a, self.b)
         self.bc = self.connect(self.b, self.c)
-        self.reset = self.add_global_transition(self.a)
+        self.reset = self.connect_any(self.a)
 
         self.initial_state = self.a
 
@@ -60,8 +60,11 @@ class AutomaticStateMachine(StateMachine):
 def test_initial_state():
     sm = StateMachine()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         sm.initial_state = None
+
+    with pytest.raises(TypeError):
+        sm.initial_state = object
 
     with pytest.raises(ConfigurationError):
         sm.start()

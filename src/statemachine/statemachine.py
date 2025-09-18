@@ -80,8 +80,8 @@ class StateMachine(Generic[T]):
 
     @initial_state.setter
     def initial_state(self, state: State):
-        if state is None:
-            raise ValueError("Initial state cannot be set as None.")
+        if not isinstance(state, State):
+            raise TypeError(f"Expecting State but got {type(state)}.")
         self._initial_state = state
 
     def connect(
@@ -92,10 +92,12 @@ class StateMachine(Generic[T]):
         automatic: bool = False,
         name: Optional[str] = None,
     ) -> Transition:
-        """Connect states.
+        """Register a state transition between given states.
 
-        Creates a state transition that is allowed to occur from any of the given
-        states (`from_states`) to the target state (`to_state`).
+        connect() acts as a high-level convenience method. It wires together from_state,
+        to_state, and an optional callback. It creates a state transition that is allowed
+        to occur from any of the given states (`from_states`) to the target state
+        (`to_state`).
 
         Optionally user can give a callable that shall be called when this state
         transition occurs. The callable is called after exiting the previous state
@@ -112,6 +114,15 @@ class StateMachine(Generic[T]):
         Optional `name` argument can be used to give a name for the state transition.
         State machine does not use the name directly, but it can be helpful to follow
         state transitions and with visualisation.
+
+        Calling connect() equals to:
+            transition = Transition(from_states, to_state, automatic, name, callback)
+            state_machine.add_transition(transition)
+
+        Triggering transition manually:
+            state_machine.trigger(transition)
+
+        Returns the created transition object.
         """
         transition = self.create_transition(
             from_states=from_states,
@@ -120,25 +131,25 @@ class StateMachine(Generic[T]):
             name=name,
             callback=callback,
         )
-        self.register_transition(transition)
+        self.add_transition(transition)
         return transition
 
-    def add_global_transition(
+    def connect_any(
         self,
         to_state: State,
         callback: Optional[Callback_Type] = None,
         automatic: bool = False,
         name: Optional[str] = None,
     ) -> Transition:
-        """Add a global transition.
+        """Connect from any state to this one.
 
-        Add a global transition from any state to given state. Otherwise, works the same as
+        Add a global transition from any other state to given state. Otherwise, works the same as
         `connect()`.
         """
         transition = self.create_global_transition(
             to_state=to_state, automatic=automatic, name=name, callback=callback
         )
-        self.register_transition(transition)
+        self.add_transition(transition)
         return transition
 
     def create_transition(
@@ -167,28 +178,18 @@ class StateMachine(Generic[T]):
         name: Optional[str] = None,
         callback: Optional[Callback_Type] = None,
     ) -> Transition:
-        """Create transition instance."""
+        """Create global transition instance."""
         transition: Transition = GlobalTransition(
             to_state=to_state, automatic=automatic, name=name, callback=callback
         )
         setattr(transition, "trigger", types.MethodType(self.trigger, transition))
         return transition
 
-    def register_transition(self, transition: Transition):
-        """Register a transition."""
+    def add_transition(self, transition: Transition):
+        """Register a transition object."""
         if not isinstance(transition, Transition):
             raise ValueError(f"Expecting Transition but got {transition}.")
         self._transitions.append(transition)
-
-    def _log_states(self):
-        log = [f"{self} states and transitions:"]
-        for t in self.transitions():
-            from_states = t.from_states[0] if len(t.from_states) == 1 else t.from_states
-            if t.name:
-                log.append(f"  {from_states} → {t.to_state} : {t.name}")
-            else:
-                log.append(f"  {from_states} → {t.to_state}")
-        logger.debug("\n".join(log))
 
     def transitions(self) -> list[Transition]:
         """Get transitions as a list."""
@@ -211,6 +212,18 @@ class StateMachine(Generic[T]):
         State machine can be halted e.g., if state transition fails.
         """
         return not self._run.is_set()
+
+    def _log_states(self):
+        lines = [f"{self} states and transitions:"]
+        for t in self.transitions():
+            from_states = f"[{', '.join([str(s) for s in t.from_states])}]"
+            line = f"  {from_states} → {t.to_state}"
+            if t.name:
+                line += f" : {t.name}"
+            if t.automatic:
+                line += " (automatic)"
+            lines.append(line)
+        logger.debug("\n".join(lines))
 
     def _is_initial_state_used(self) -> bool:
         for t in self.transitions():
@@ -326,12 +339,12 @@ class StateMachine(Generic[T]):
             raise NotAliveError
         self._run.set()
 
-    def can_transition(self, from_state: State, transition: Transition) -> bool:
+    def can_transition(self, transition: Transition) -> bool:
         """Check if a transition can be done from given state.
 
         Checks if a state transition is valid and possible at this moment.
         """
-        return transition.can_transition_from(from_state) and transition.is_applicable(
+        return transition.can_transition_from(self.state) and transition.is_applicable(
             self.context
         )
 
@@ -343,7 +356,7 @@ class StateMachine(Generic[T]):
         """
         for t in self._automatic_transitions():
             try:
-                if self.can_transition(self.state, t):
+                if self.can_transition(t):
                     return t
             except Exception as error:
                 logger.exception(error)

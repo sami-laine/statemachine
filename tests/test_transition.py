@@ -11,7 +11,7 @@ class MyStateMachine(StateMachine):
 
         self.ab = self.connect(self.a, self.b, name="a → b")
         self.bc = self.connect(self.b, self.c, automatic=True)
-        self.reset = self.add_global_transition(self.a)
+        self.reset = self.connect_any(self.a)
 
         self.initial_state = self.a
 
