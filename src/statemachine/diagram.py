@@ -93,7 +93,7 @@ def create_state_diagram(state_machine: StateMachine) -> str:
                 line += t.name
 
             if t.automatic:
-                line += " [automatic]"
+                line += " [auto]"
 
             transitions.append(line)
 
