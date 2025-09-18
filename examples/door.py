@@ -4,7 +4,7 @@ from statemachine import State, StateMachine
 
 
 # Configure logging
-logging.basicConfig(format='%(levelname)s %(message)s', level=logging.INFO)
+logging.basicConfig(format="%(levelname)s %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -15,6 +15,7 @@ class Actuator:
     states. It simulates extension (opening) and retraction
     (closing) with a delay.
     """
+
     def __init__(self):
         self._stop = threading.Event()
         self._duration = 1.0  # Simulated movement duration in seconds
@@ -74,6 +75,7 @@ class DoorStateMachine(StateMachine[Actuator]):
         - _opening: Automatic transition from opening → opened
         - _closing: Automatic transition from closing → closed
     """
+
     def __init__(self, context: Actuator):
         super().__init__(context)
 
@@ -83,12 +85,10 @@ class DoorStateMachine(StateMachine[Actuator]):
         closing = Closing()
         closed = State("Closed")
 
-        # Use 'Opened' as initial state
-        self.initial_state = self.opened
-
         # Define transitions
-        self._open = self.connect([opening, self.opened, closing, closed], opening)
-        self._close = self.connect([opening, self.opened, closing, closed], closing)
+        self.connect(self.initial_state, opening, automatic=True)
+        self._open = self.connect([opening, closing, closed], opening, name="Open")
+        self._close = self.connect([opening, self.opened, closing], closing, name="Close")
         self.connect(opening, self.opened, automatic=True)
         self.connect(closing, closed, automatic=True)
 
@@ -106,9 +106,6 @@ class DoorStateMachine(StateMachine[Actuator]):
 # Instantiate the state machine with an actuator context
 door = DoorStateMachine(context=Actuator())
 door.start()
-
-# Trigger door opening
-door.open()
 
 # Wait until the door reaches the 'opened' state.
 # Without waiting the door begins closing before being opened.
