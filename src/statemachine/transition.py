@@ -1,6 +1,7 @@
 from typing import Callable
 from typing import Generic
 from typing import Optional
+import itertools
 
 from . import T
 from .state import AnyState
@@ -12,6 +13,7 @@ Callback_Type = Callable[[Optional[T]], None]
 
 class Transition(Generic[T]):
     """State transition."""
+    _transition_counter = itertools.count(1)
 
     def __init__(
         self,
@@ -21,12 +23,13 @@ class Transition(Generic[T]):
         name: Optional[str] = None,
         callback: Optional[Callback_Type] = None,
     ):
+        transition_number = next(self._transition_counter)
         self.from_states = (
             from_states if isinstance(from_states, list) else [from_states]
         )
         self.to_state = to_state
         self.automatic = automatic
-        self.name = name or ""
+        self.name = name or f"T{transition_number}"
         self.callback = callback
 
         for state in self.from_states:
@@ -39,11 +42,18 @@ class Transition(Generic[T]):
     def __str__(self):
         return f"{self.name} [auto]" if self.automatic else f"{self.name} [manual]"
 
-    def __call__(self):
-        self.trigger()
+    def __call__(self, blocking: bool = True, timeout: Optional[float] = None):
+        """Triggers the transition.
 
-    def trigger(self):
-        """Trigger the state transition."""
+        Calls trigger() internally.
+        """
+        self.trigger(blocking=blocking, timeout=timeout)
+
+    def trigger(self, blocking: bool = True, timeout: Optional[float] = None):
+        """Trigger the transition.
+
+        Internally calls state machine's trigger().
+        """
         # This method is a replaced by the state machine with the actual
         # implementation.
 

@@ -6,6 +6,7 @@ from typing import Optional
 from . import T
 from .errors import FinalStateReached
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +30,7 @@ class State(Generic[T]):
 
     def __init__(self, name: Optional[str] = None):
         state_number = next(self._state_counter)
-        self.name = name or self._name or f"State {state_number}"
+        self.name = name or self._name or f"S{state_number}"
 
     def __init_subclass__(cls, name=None):
         cls._name = name or cls.__name__

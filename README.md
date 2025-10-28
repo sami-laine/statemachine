@@ -432,6 +432,49 @@ class ExampleStateMachine(StateMachine):
 * If recovery isn’t possible, you can log the error and leave the machine halted or stop it.
 
 
+# 🔒 Thread-Safe Execution with use() and when()
+
+State transitions often need to be coordinated carefully - especially in multithreaded 
+environments or when executing complex logic. The library provides two context
+managers to help:
+
+`with state_machine.use():`
+
+Reserves the state machine for the current thread, allowing a block of code to execute
+atomically without interference from other threads.
+
+**Use cases:**
+* Perform multiple transitions as a single operation
+* Run logic in a specific state and return afterward
+* Ensure thread safety during critical operations
+
+```Python
+with sm.use():
+    sm.a_to_b()
+    run_algorithm()
+    sm.b_to_c()
+```
+
+`with state_machine.when(state):`
+
+Waits until the machine reaches the specified state(s), then reserves it for
+the current thread and executes the block atomically.
+
+**Use cases:**
+* React to automatic transitions
+* Safely run code after reaching a target state
+* Avoid race conditions after wait()-style blocking
+
+```Python
+with sm.when(sm.d):
+    logger.info("Running code in state 'D'.")
+    sm.stop()
+```
+
+These context managers make your state machine safer, more predictable, and easier
+to reason about - especially in concurrent applications.
+
+
 # 🔔 State Machine Hooks
 
 Beyond `on_entry`/`on_exit`, the machine itself provides a few hooks:

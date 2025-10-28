@@ -32,7 +32,7 @@ def test_name():
     sm = MyStateMachine()
 
     assert sm.ab.name == "a → b"
-    assert sm.bc.name == ""
+    assert sm.bc.name.startswith("T")
 
 
 def test_is_applicable():

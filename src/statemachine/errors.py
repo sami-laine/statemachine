@@ -18,7 +18,6 @@ class StateMachineError(Exception):
     """Generic base for state machine errors."""
 
 
-
 class ConfigurationError(StateMachineError):
     """Configuration error.
 
@@ -56,6 +55,10 @@ class TransitionError(StateMachineError):
     Raised if error occurs while executing `on_trigger()` of
     a Transition instance.
     """
+
+
+class StateMachineBusyError(TransitionError):
+    """Raised when a transition cannot proceed because the state machine is in use."""
 
 
 class NoTransitionAvailable(StateMachineError):
