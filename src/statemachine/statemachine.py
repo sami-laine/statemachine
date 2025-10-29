@@ -496,13 +496,20 @@ class StateMachine(Generic[T]):
             - `blocking=False` → Try immediately and raise an error if unavailable.
 
         Transition Workflow:
-            1. Call `on_exit()` on the current state.
-            2. Invoke the transition's callback (if any).
-            3. Set the new state.
-            4. Call `on_state_changed()` with the previous and new states.
-            5. Notify threads waiting for a state change.
-            6. Call `on_entry()` on the new state.
-            7. Call `on_state_applied()` after the transition is complete.
+            With outer lock:
+                1. Check if transition is valid.
+                2. Call `on_exit()` on the current state.
+
+            With outer and inner lock:
+                3. Invoke the transition's callback (if any).
+                4. Set the new state.
+                5. Call `prepare_entry()`.
+                6. Call `on_state_changed()`.
+                7. Notify threads waiting for a state change.
+
+            With inner lock:
+                8. Call `on_entry()` on the new state.
+                9. Call `on_state_applied()`.
         """
         if blocking is False or timeout is None:
             # Lock.acquire(): It is forbidden to specify a timeout when blocking is False.
@@ -531,23 +538,40 @@ class StateMachine(Generic[T]):
                     f"Invalid state transition from '{self.state}' to '{transition.to_state}'."
                 )
 
-            self._call_on_exit_for(self._current_state)
+            # Error in on_exit() prevents state transition - as well as
+            # error in calling transition callback.
+            self._call_on_exit(self._current_state)
 
-            if transition.callback:
-                self._call_callback(transition.callback)
-
+            # Later thread must wait until the first one gets completed.
             self._inner_lock.acquire()
-        finally:
-            self._outer_lock.release()
+            self._call_transition_callback(transition)
 
-        try:
+            # Set state as current state and prepare it for entry.
             state = transition.to_state
             previous_state = self._current_state
 
             self._set_state(state)
+            self._call_prepare_entry(state)
+
+            # Notify about the change in state.
             self._call_on_state_changed(previous_state, state)
             self._notify_state_changed()
-            self._call_on_entry_for(state)
+        except Exception:
+            if self._inner_lock.locked():
+                self._inner_lock.release()
+            raise
+        finally:
+            self._outer_lock.release()
+
+        # After releasing _outer_lock other thread may acquire it and call
+        # on_exit() for the current state - unless current thread had already
+        # acquired the lock already in use() or when() context managers.
+
+        # Invoke the state specific logic. Failure in state logic keeps
+        # the state unchanged until the error is handled.
+
+        try:
+            self._call_on_entry(state)
             self._call_on_state_applied(state)
         except FinalStateReached:
             self.handle_final_state_reached()
@@ -586,20 +610,27 @@ class StateMachine(Generic[T]):
             logger.warning("Calling on_state_changed() caused an error: %s", error)
             logger.exception(error)
 
-    def _call_callback(self, callback: Callback_Type):
-        logger.debug("Calling callback()' ...")
-        callback(self.context)
-        logger.debug("Calling callback()' completed successfully.")
+    def _call_transition_callback(self, transition: Transition):
+        if not transition.callback:
+            return
+        logger.debug("Calling '%s' callback()' ...", transition)
+        transition.callback(self.context)
+        logger.debug("Calling '%s' callback()' completed.", transition)
 
-    def _call_on_entry_for(self, state: State):
-        logger.debug("Calling on_entry() for '%s' ...", state)
+    def _call_prepare_entry(self, state: State):
+        logger.debug("Calling '%s' prepare_entry() ...", state)
+        state.prepare_entry(self.context)
+        logger.debug("Calling '%s' prepare_entry() completed.", state)
+
+    def _call_on_entry(self, state: State):
+        logger.debug("Calling '%s' on_entry() ...", state)
         state.on_entry(self.context)
-        logger.debug("Calling on_entry() for '%s' completed successfully.", state)
+        logger.debug("Calling '%s' on_entry() completed.", state)
 
-    def _call_on_exit_for(self, state: State):
-        logger.debug("Calling on_exit() for '%s' ...", state)
+    def _call_on_exit(self, state: State):
+        logger.debug("Calling '%s' on_exit() ...", state)
         state.on_exit(self.context)
-        logger.debug("Calling on_exit() for '%s' completed successfully.", state)
+        logger.debug("Calling '%s' on_exit() completed.", state)
 
     def _call_on_state_applied(self, state: State):
         try:
@@ -710,11 +741,9 @@ class _When:
         timer = CountdownTimer(self._timeout)
         while sm.wait(self._states, timeout=timer.time_left):
             if sm._outer_lock.acquire(timeout=timer.time_left or -1):
-                if sm._inner_lock.acquire(timeout=timer.time_left or -1):
-                    sm._inner_lock.release()
-                    return sm.context
+                return sm.context
         raise TimeoutError(
-            f"Waiting for {self._states} state(s) timed out in {timeout} seconds."
+            f"Waiting for {self._states} state(s) timed out in {self._timeout} seconds."
         )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
