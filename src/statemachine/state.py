@@ -2,12 +2,16 @@ import itertools
 import logging
 from typing import Generic
 from typing import Optional
+from typing import Callable
 
 from . import T
 from .errors import FinalStateReached
 
 
 logger = logging.getLogger(__name__)
+
+
+Callback_Type = Callable[[Optional[T]], None]
 
 
 class State(Generic[T]):
@@ -17,6 +21,9 @@ class State(Generic[T]):
         class Example(State[Context]):
             def is_applicable(self, context: Context) -> bool:
                 return True
+
+            def prepare_entry(self, context: Context):
+                pass
 
             def on_entry(self, context: Context):
                 pass
@@ -28,9 +35,16 @@ class State(Generic[T]):
     _name: Optional[str] = None
     _state_counter = itertools.count(1)
 
-    def __init__(self, name: Optional[str] = None):
+    def __init__(
+        self,
+        name: Optional[str] = None,
+        callback: Optional[Callback_Type] = None,
+        final: bool = False,
+    ):
         state_number = next(self._state_counter)
         self.name = name or self._name or f"S{state_number}"
+        self.final = final
+        self._callback = (lambda _: None) if callback is None else callback
 
     def __init_subclass__(cls, name=None):
         cls._name = name or cls.__name__
@@ -79,6 +93,7 @@ class State(Generic[T]):
         The `prepare_entry()` method is guaranteed to be called before either
         `on_entry()` or `on_exit()`.
         """
+        self._callback(context)
 
     def on_exit(self, context: T):
         """Called before state machine exits this state.
@@ -102,13 +117,22 @@ class InitialState(State):
 
 
 class FinalState(State):
-    """Default final state.
+    """A default final state that terminates the state machine when entered.
 
-    Raises FinalStateReached exception that closes the state machine.
+    This state is marked as final and is intended to signal the end of the state
+    machine's lifecycle. No further transitions should occur after it is entered.
+
+    Note:
+        You can also use `State(final=True)` to mark any state as final.
+        Raising `FinalStateReached` manually from `on_exit()` will have the same
+        effect. `FinalState` simply provides a convenient default implementation.
+
+    Args:
+        name (str): Optional name for the final state. Defaults to "Final".
     """
 
-    def on_entry(self, context: T):
-        raise FinalStateReached
+    def __init__(self, name: str = "Final"):
+        super().__init__(name=name, final=True)
 
 
 class AnyState(State):

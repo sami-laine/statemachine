@@ -6,7 +6,7 @@ from string import Template
 from tempfile import NamedTemporaryFile
 from typing import Optional
 
-from statemachine import FinalState
+from statemachine import InitialState
 from statemachine import StateMachine
 
 logger = logging.getLogger(__name__)
@@ -68,19 +68,27 @@ def create_state_diagram(state_machine: StateMachine) -> str:
     initial_state = state_machine.initial_state
     state_names_by_ids: dict[str, str] = {}
     transitions = []
+    initial_state_handled = False
 
     for t in state_machine.transitions():
         to_state_id = _get_id(t.to_state.name)
 
         for from_state in t.from_states:
-            if from_state is initial_state:
-                line = f"[*] --> "
+            if from_state is initial_state and not initial_state_handled:
+                if isinstance(from_state, InitialState):
+                    line = f"[*] --> "
+                else:
+                    from_state_id = _get_id(from_state.name)
+                    state_names_by_ids[from_state_id] = from_state.name
+                    line = f"[*] --> {from_state_id}\n"
+                    line += f"{from_state_id} --> "
+                initial_state_handled = True
             else:
                 from_state_id = _get_id(from_state.name)
                 state_names_by_ids[from_state_id] = from_state.name
                 line = f"{from_state_id} --> "
 
-            if isinstance(t.to_state, FinalState):
+            if t.to_state.final:
                 line += "[*]"
             else:
                 state_names_by_ids[to_state_id] = t.to_state.name

@@ -13,14 +13,15 @@ Callback_Type = Callable[[Optional[T]], None]
 
 class Transition(Generic[T]):
     """State transition."""
+
     _transition_counter = itertools.count(1)
 
     def __init__(
         self,
         from_states: State | list[State],
         to_state: State,
-        automatic: bool = False,
         name: Optional[str] = None,
+        automatic: bool = False,
         callback: Optional[Callback_Type] = None,
     ):
         transition_number = next(self._transition_counter)
@@ -81,7 +82,7 @@ class GlobalTransition(Transition):
         to_state: State,
         automatic: bool = False,
         name: Optional[str] = None,
-        callback: Optional[Callable] = None,
+        callback: Optional[Callback_Type] = None,
     ):
         super().__init__(
             from_states=AnyState(),

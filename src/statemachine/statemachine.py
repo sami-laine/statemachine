@@ -89,9 +89,9 @@ class StateMachine(Generic[T]):
         self,
         from_states: State | list[State],
         to_state: State,
+        name: Optional[str] = None,
         callback: Optional[Callback_Type] = None,
         automatic: bool = False,
-        name: Optional[str] = None,
     ) -> Transition:
         """Register a state transition between given states.
 
@@ -569,10 +569,14 @@ class StateMachine(Generic[T]):
 
         # Invoke the state specific logic. Failure in state logic keeps
         # the state unchanged until the error is handled.
+        # The error handler is called also if final state fails.
 
         try:
             self._call_on_entry(state)
             self._call_on_state_applied(state)
+
+            if state.final:
+                raise FinalStateReached  # Raising FinalStateReached for single source of truth.
         except FinalStateReached:
             self.handle_final_state_reached()
         except Exception as error:
