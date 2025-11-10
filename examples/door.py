@@ -1,11 +1,14 @@
+import time
 import threading
 import logging
 from statemachine import State, StateMachine
 
 
 # Configure logging
-logging.basicConfig(format="%(levelname)s %(message)s", level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format=" %(name)-12s [%(levelname)-5s] %(message)s", level=logging.DEBUG
+)
+logger = logging.getLogger("Door")
 
 
 class Actuator:
@@ -16,35 +19,46 @@ class Actuator:
     (closing) with a delay.
     """
 
-    def __init__(self):
-        self._stop = threading.Event()
-        self._duration = 1.0  # Simulated movement duration in seconds
+    logger = logging.getLogger("Actuator")
+
+    def __init__(self, stroke_duration=2.0):
+        self._ready = threading.Event()
+        self._duration = stroke_duration  # Stroke duration in seconds.
 
     def extend(self):
-        """Simulate extending the actuator (opening the door)."""
-        self._stop.clear()
-        self._stop.wait(self._duration)
+        """Extend actuator (move outwards).
+
+        Door is opened when actuator is extended.
+        """
+        Actuator.logger.info("Extending ...")
+        self._ready.clear()
+        self._ready.wait(self._duration)
+        Actuator.logger.info("Extending ends.")
 
     def retract(self):
-        """Simulate retracting the actuator (closing the door)."""
-        self._stop.clear()
-        self._stop.wait(self._duration)
+        """Retract actuator (pull inwards).
+
+        Door is closed when actuator is retracted.
+        """
+        Actuator.logger.info("Retracting ...")
+        self._ready.clear()
+        self._ready.wait(self._duration)
+        Actuator.logger.info("Retracting ends.")
 
     def stop(self):
-        """Cancel any ongoing actuator movement."""
-        self._stop.set()
+        """Stop ongoing actuator movement."""
+        Actuator.logger.info("Stop.")
+        self._ready.set()
 
 
 class Opening(State[Actuator]):
     """State representing the door opening process."""
 
     def on_entry(self, actuator: Actuator):
-        logger.info("Door is opening ...")
-        actuator.extend()
-        logger.info("Opening ended.")
+        actuator.extend()  # Blocks
 
     def on_exit(self, actuator: Actuator):
-        # Stop actuator if transition occurs before completion
+        # Stopping actuator ends extension.
         actuator.stop()
 
 
@@ -52,12 +66,31 @@ class Closing(State[Actuator]):
     """State representing the door closing process."""
 
     def on_entry(self, actuator: Actuator):
-        logger.info("Door is closing ...")
-        actuator.retract()
-        logger.info("Closing ended.")
+        actuator.retract()  # Blocks
 
     def on_exit(self, actuator: Actuator):
+        # Stopping actuator ends retraction.
         actuator.stop()
+
+
+class Opened(State[Actuator]):
+    """State representing a state where the door is closed."""
+
+    def __init__(self, keep_open_duration: float = 2.0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._close = threading.Event()
+        self._keep_open_duration = keep_open_duration
+
+    def prepare_entry(self, context: Actuator):
+        self._close.clear()
+
+    def on_exit(self, context: Actuator):
+        self._close.set()
+
+    def on_entry(self, context: Actuator):
+        logger.info("Keep door open for %s seconds.", self._keep_open_duration)
+        self._close.wait(self._keep_open_duration)
+        logger.info("Door can be closed.")
 
 
 class DoorStateMachine(StateMachine[Actuator]):
@@ -80,22 +113,32 @@ class DoorStateMachine(StateMachine[Actuator]):
         super().__init__(context)
 
         # Define states
-        opening = Opening()
-        self.opened = State("Opened")
-        closing = Closing()
-        closed = State("Closed")
+        self.opening = Opening()
+        self.opened = Opened(keep_open_duration=2.0)
+        self.closing = Closing()
+        self.closed = State("Closed")
 
         # Define transitions
-        self.connect(self.initial_state, opening, automatic=True)
-        self._open = self.connect([opening, closing, closed], opening, name="Open")
-        self._close = self.connect([opening, self.opened, closing], closing, name="Close")
-        self.connect(opening, self.opened, automatic=True)
-        self.connect(closing, closed, automatic=True)
+        self.connect(self.initial_state, self.opening, automatic=True)
+        self._open = self.connect(
+            [self.opening, self.closing, self.closed], self.opening, name="Open"
+        )
+        self._close = self.connect(
+            [self.opening, self.opened, self.closing], self.closing, name="Close"
+        )
+        self.connect(self.opening, self.opened, automatic=True)
+        self.connect(
+            self.opened, self.closing, automatic=True
+        )  # Door gets closed after a given delay.
+        self.connect(self.closing, self.closed, automatic=True)
+        self.connect(self.opening, self.opened)
 
     def open(self):
+        logger.info("Open door.")
         self._open.trigger()
 
     def close(self):
+        logger.info("Close door.")
         self._close.trigger()
 
     def on_state_changed(self, from_state: State, to_state: State):
@@ -109,7 +152,7 @@ door.start()
 
 # Wait for the first actual state to be applied. Without waiting,
 # we may try to trigger `close` from the initial state.
-door.wait_next_state()
+door.wait(door.opening)
 
 # Wait until the door reaches the 'opened' state.
 # Without waiting the door begins closing before being opened.
@@ -119,11 +162,14 @@ door.wait_next_state()
 # a multithreading use case.
 threading.Thread(target=door.close).start()
 
-# Trigger another open operation while the door is still closing.
+# Trigger open while the door is still closing. A short delay is used
+# to more likely avoid a situation where open() takes place before close().
+time.sleep(0.2)
 threading.Thread(target=door.open).start()
 
-# Wait until the door reaches the 'opened' state.
-door.wait(door.opened)
+# Door remains opened for given time interval and then gets closed.
+# Timeout can be used to ensure the waiting ends in given timeout.
+door.wait(door.closed, timeout=8.0)
 
 # Since there's no final state, we manually stop the state machine
 door.stop()

@@ -86,7 +86,7 @@ class ExampleMachine(StateMachine):
 State machine is expecting initial state (`initial_state`) to be defined. State machine predefines an initial 
 state but it can be replaced with user defined State.
 
-`ConfigurationError` is raised if state machine detects that `initial_state` is no transitions to any other 
+`ConfigurationError` is raised if state machine detects that `initial_state` have no transitions to any other
 state. This is likely a configuration error.
 
 Initial state can be set by assigning a `State` instance to `initial_state`. 
@@ -122,11 +122,13 @@ class ExampleMachine(StateMachine):
         c = FinalState()
 ```
 
-Alternatively, you can raise the `FinalStateReached` exception inside a state hook.
+ You can also use `State(final=True)` to mark any state as final. Raising `FinalStateReached` manually
+ from `on_exit()` will have the same effect. `FinalState` simply provides a convenient default
+ implementation.
 
 ## Subclassing State
 
-Each state in your machine can implement three hooks:
+Each state in your machine can implement the following hooks:
 
 ```python
 from statemachine import State, T
@@ -136,16 +138,18 @@ class MyState(State[T]):
         """Return True if this state can be entered in the current context."""
         return True
 
+    def prepare_entry(self, context: T):
+      """Called before `on_entry()` to prepare the state for activation."""
+
     def on_entry(self, context: T):
         """Called when entering this state."""
-        ...
 
     def on_exit(self, context: T):
         """Called when exiting this state."""
-        ...
 ```
 
 * `is_applicable(context)` Decide at runtime whether this state is eligible to be entered.
+* `prepare_entry(context)` Prepare the state for activation.
 * `on_entry(context)` Execute state specific logic when the state is activated.
 * `on_exit(context)` Clean up or cancel pending operations when leaving the state.
 
@@ -217,7 +221,7 @@ class ExampleMachine(StateMachine[T]):
 current_state.on_exit()
 current_state = to_state
 callback()
-current_state.en_entry()
+current_state.on_entry()
 ```
 
 Note the difference between transition callbacks and `State` hooks; **Transition callbacks** are bound to a specific
@@ -430,6 +434,49 @@ class ExampleStateMachine(StateMachine):
 * The machine halts until you call `resume()`.
 * Return a state to redirect the next transition, or return `None` to continue normally.
 * If recovery isn’t possible, you can log the error and leave the machine halted or stop it.
+
+
+# 🔒 Thread-Safe Execution with use() and when()
+
+State transitions often need to be coordinated carefully - especially in multithreaded 
+environments or when executing complex logic. The library provides two context
+managers to help:
+
+`with state_machine.use():`
+
+Reserves the state machine for the current thread, allowing a block of code to execute
+atomically without interference from other threads.
+
+**Use cases:**
+* Perform multiple transitions as a single operation
+* Run logic in a specific state and return afterward
+* Ensure thread safety during critical operations
+
+```Python
+with sm.use():
+    sm.a_to_b()
+    run_algorithm()
+    sm.b_to_c()
+```
+
+`with state_machine.when(state):`
+
+Waits until the machine reaches the specified state(s), then reserves it for
+the current thread and executes the block atomically.
+
+**Use cases:**
+* React to automatic transitions
+* Safely run code after reaching a target state
+* Avoid race conditions after wait()-style blocking
+
+```Python
+with sm.when(sm.d):
+    logger.info("Running code in state 'D'.")
+    sm.stop()
+```
+
+These context managers make your state machine safer, more predictable, and easier
+to reason about - especially in concurrent applications.
 
 
 # 🔔 State Machine Hooks

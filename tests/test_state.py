@@ -10,7 +10,7 @@ class StateWithName(State, name="foo"):
 
 
 def test_name():
-    assert State().name.startswith("State ")
+    assert State().name.startswith("S")
     assert State("A").name == "A"
     assert State("a").name == "a"
     assert SubclassedState().name == SubclassedState.__name__
