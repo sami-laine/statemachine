@@ -4,12 +4,6 @@ from dataclasses import dataclass
 from statemachine import StateMachine, State
 
 
-@dataclass
-class Entry:
-    event: str
-    when: str
-
-
 class Opened(State):
     def on_entry(self, access_log: list):
         # Log the time when the door enters the 'Opened' state
@@ -46,6 +40,13 @@ class Door(StateMachine[list]):
 
     def on_state_changed(self, from_state: State, to_state: State):
         print(f"State changed: {from_state} → {to_state}")
+
+
+@dataclass
+class Entry:
+    """Access log entry."""
+    event: str
+    when: str
 
 
 # Naive example of an access log. Access log is used as a state machine context.
