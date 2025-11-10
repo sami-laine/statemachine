@@ -307,7 +307,7 @@ class StateMachine(Generic[T]):
         The return value is True unless a given timeout expired, in which case it is False.
         """
         target_states = states if isinstance(states, list) else [states]
-        timer = CountdownTimer(timeout)
+        timer = _CountdownTimer(timeout)
 
         while not self.state in target_states:
             logger.debug(
@@ -733,7 +733,7 @@ class _When:
     def __init__(
         self,
         state_machine: StateMachine,
-        states: list[State],
+        states: State | list[State],
         timeout: Optional[float] = None,
     ):
         self._state_machine = state_machine
@@ -742,7 +742,7 @@ class _When:
 
     def __enter__(self):
         sm = self._state_machine
-        timer = CountdownTimer(self._timeout)
+        timer = _CountdownTimer(self._timeout)
         while sm.wait(self._states, timeout=timer.time_left):
             if sm._outer_lock.acquire(timeout=timer.time_left or -1):
                 return sm.context
@@ -757,16 +757,13 @@ class _When:
             sm._state_set_condition.notify_all()
 
 
-class CountdownTimer:
+class _CountdownTimer:
     def __init__(self, duration: Optional[float] = None):
         self.duration = duration
         self.start_time = time.time()
 
     def __str__(self) -> str:
         return str(self.time_left)
-
-    def __float__(self) -> float:
-        return float(self.time_left)
 
     @property
     def time_left(self) -> Optional[float]:
@@ -775,6 +772,7 @@ class CountdownTimer:
         return max(0.0, self.duration - (time.time() - self.start_time))
 
     def expired(self) -> bool:
-        if self.duration is None:
+        time_left = self.time_left
+        if self.duration is None or time_left is None:
             return False
-        return self.time_left <= 0
+        return time_left <= 0
