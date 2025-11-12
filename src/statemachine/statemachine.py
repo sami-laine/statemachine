@@ -61,10 +61,11 @@ class StateMachine(Generic[T]):
         self._outer_lock = RLock()
         self._inner_lock = Lock()
         self._control_thread = None
-        self._state_set_condition = threading.Condition()
         self._state_changed_condition = threading.Condition()
         self._run = threading.Event()
         self._stop = threading.Event()
+        self._state_applied = threading.Event()
+        self._state_applied_wait_interval = 1.1  # seconds
         self._initial_state: State = InitialState(name="InitialState")
         self._current_state: State = self.initial_state
         self._transitions: list[Transition] = []
@@ -277,9 +278,6 @@ class StateMachine(Generic[T]):
 
         self._stop.set()
 
-        with self._state_set_condition:
-            self._state_set_condition.notify()
-
     def join(self, timeout: Optional[float] = None) -> bool:
         """Wait state machine to get completed.
 
@@ -384,53 +382,63 @@ class StateMachine(Generic[T]):
     def _control_loop(self):
         logger.debug("Control loop running.")
 
-        with self._state_set_condition:
-            while not self._stop.is_set():
-                logger.debug("Handling next transition.")
+        while not self._stop.is_set():
+            logger.debug("Handling next transition.")
 
-                # State machine is halted and needs to be resumed before continuing.
-                self._run.wait()
+            # State machine is halted and needs to be resumed before continuing.
+            self._run.wait()
 
-                try:
-                    self.handle_next_transition()
-                except NoTransitionAvailable:
-                    logger.debug(
-                        "No automatic transition available from %s." % self.state
-                    )
-                    logger.debug("Waiting for external state transition ...")
-                except StateMachineBusyError:
-                    logger.debug(
-                        "Failed to trigger a transition - busy serving another thread. Waiting ..."
-                    )
-                except TransitionError as error:
-                    logger.exception(error)
-                    self.halt()
-                except (InvalidTransitionError, Halted) as error:
-                    # Most likely a state machine has faces a race condition while
-                    # handling a next transition.
-                    logger.warning(error)
-                except StateError as error:
-                    logger.warning(error)
-                except Exception as error:
-                    logger.error(
-                        "Error occurred while carrying out a state transition: %s",
-                        error,
-                    )
+            try:
+                self.handle_next_transition()
+            except NoTransitionAvailable:
+                logger.debug(
+                    "No automatic transition available from %s." % self.state
+                )
+                self._wait_next_state_or_stop()
+            except StateMachineBusyError:
+                logger.debug(
+                    "Failed to trigger a transition - busy serving another thread."
+                )
+                # self._wait_state_applied_or_stop()
+            except TransitionError as error:
+                logger.exception(error)
+                self.halt()
+            except (InvalidTransitionError, Halted) as error:
+                # Most likely a state machine has faces a race condition while
+                # handling a next transition.
+                logger.warning(error)
+            except StateError as error:
+                logger.warning(error)
+            except Exception as error:
+                logger.error(
+                    "Error occurred while carrying out a state transition: %s",
+                    error,
+                )
 
-                # Other thread is already in trigger(). Wait until the thread is
-                # complete and new state is set. Waiting gives a change for external
-                # threads to trigger a transition while the state machine is still
-                # busy with long-lasting state logic.
-                self._wait_busy()
+            # Other thread is already in trigger(). Wait until the thread is
+            # complete and new state is set. Waiting gives a change for external
+            # threads to trigger a transition while the state machine is still
+            # busy with long-lasting state logic.
+            self._wait_state_applied_or_stop()
+
+            print(">> STATE", self.state)
 
         logger.debug("Exiting control loop.")
 
         self.on_exit()
 
-    def _wait_busy(self, interval=0.1):
-        while True:
-            self._state_set_condition.wait(timeout=interval)
-            if not self._inner_lock.locked():
+    def _wait_state_applied_or_stop(self):
+        # Monitoring stop and wait() with timeout are needed to be able to
+        # stop while waiting for a manual state transition but stop() is called.
+        while not self._stop.is_set():
+            print(">> self._state_applied", self._state_applied.is_set())
+            if self._state_applied.wait(self._state_applied_wait_interval):
+                break
+
+    def _wait_next_state_or_stop(self):
+        # logger.debug("Waiting for a state transition ...")
+        while not self._stop.is_set():
+            if self.wait_next_state(0.1):
                 break
 
     def _handle_error(self, error_info: ErrorInfo) -> Optional[State]:
@@ -544,6 +552,8 @@ class StateMachine(Generic[T]):
 
             # Later thread must wait until the first one gets completed.
             self._inner_lock.acquire()
+            self._state_applied.clear()
+
             self._call_transition_callback(transition)
 
             # Set state as current state and prepare it for entry.
@@ -559,6 +569,7 @@ class StateMachine(Generic[T]):
         except Exception:
             if self._inner_lock.locked():
                 self._inner_lock.release()
+            self._state_applied.set()
             raise
         finally:
             self._outer_lock.release()
@@ -595,8 +606,10 @@ class StateMachine(Generic[T]):
             raise StateError() from error
         finally:
             self._inner_lock.release()
-            with self._state_set_condition:
-                self._state_set_condition.notify()
+            self._state_applied.set()
+
+            # with self._state_set_condition:
+            #    self._state_set_condition.notify()
 
     def _set_state(self, state: State):
         previous_state = self._current_state
@@ -725,8 +738,6 @@ class _Use:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sm = self._state_machine
         sm._outer_lock.release()
-        with sm._state_set_condition:
-            sm._state_set_condition.notify_all()
 
 
 class _When:
@@ -753,8 +764,6 @@ class _When:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sm = self._state_machine
         sm._outer_lock.release()
-        with sm._state_set_condition:
-            sm._state_set_condition.notify_all()
 
 
 class _CountdownTimer:
