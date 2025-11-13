@@ -65,10 +65,10 @@ class StateMachine(Generic[T]):
         self._run = threading.Event()
         self._stop = threading.Event()
         self._state_applied = threading.Event()
-        self._state_applied_wait_interval = 1.1  # seconds
         self._initial_state: State = InitialState(name="InitialState")
         self._current_state: State = self.initial_state
         self._transitions: list[Transition] = []
+        self._wait_interval = 0.1  # seconds
 
     def __str__(self):
         return self.__class__.__name__
@@ -262,6 +262,7 @@ class StateMachine(Generic[T]):
         except FinalStateReached:
             controller = lambda: None
 
+        self._state_applied.set()
         self._run.set()
         self._control_thread = threading.Thread(target=controller, daemon=True)
         self._control_thread.start()
@@ -373,33 +374,35 @@ class StateMachine(Generic[T]):
         Default implementation uses get_next_transition() to get the next
         available transition and trigger it.
         """
-        if transition := self.get_next_transition():
-            # May raise StateMachineBusyError.
-            self.trigger(transition, blocking=False)
-        else:
+        self._outer_lock.acquire()
+
+        logger.debug("Handling next transition.")
+
+        try:
+            transition = self.get_next_transition()
+        except Exception:
+            self._outer_lock.release()
+            raise
+
+        if transition is None:
+            self._outer_lock.release()
             raise NoTransitionAvailable
+
+        # _outer_lock is released in _trigger().
+        self._trigger(transition)
 
     def _control_loop(self):
         logger.debug("Control loop running.")
 
         while not self._stop.is_set():
-            logger.debug("Handling next transition.")
-
             # State machine is halted and needs to be resumed before continuing.
             self._run.wait()
 
             try:
                 self.handle_next_transition()
             except NoTransitionAvailable:
-                logger.debug(
-                    "No automatic transition available from %s." % self.state
-                )
+                logger.debug("No automatic transition available from %s." % self.state)
                 self._wait_next_state_or_stop()
-            except StateMachineBusyError:
-                logger.debug(
-                    "Failed to trigger a transition - busy serving another thread."
-                )
-                # self._wait_state_applied_or_stop()
             except TransitionError as error:
                 logger.exception(error)
                 self.halt()
@@ -419,27 +422,18 @@ class StateMachine(Generic[T]):
             # complete and new state is set. Waiting gives a change for external
             # threads to trigger a transition while the state machine is still
             # busy with long-lasting state logic.
-            self._wait_state_applied_or_stop()
-
-            print(">> STATE", self.state)
+            self._state_applied.wait()
 
         logger.debug("Exiting control loop.")
 
         self.on_exit()
 
-    def _wait_state_applied_or_stop(self):
-        # Monitoring stop and wait() with timeout are needed to be able to
-        # stop while waiting for a manual state transition but stop() is called.
-        while not self._stop.is_set():
-            print(">> self._state_applied", self._state_applied.is_set())
-            if self._state_applied.wait(self._state_applied_wait_interval):
-                break
-
     def _wait_next_state_or_stop(self):
-        # logger.debug("Waiting for a state transition ...")
+        logger.debug("Waiting for a state transition ...")
         while not self._stop.is_set():
-            if self.wait_next_state(0.1):
+            if self.wait_next_state(self._wait_interval):
                 break
+        logger.debug("Continuing after waiting for a state transition.")
 
     def _handle_error(self, error_info: ErrorInfo) -> Optional[State]:
         logger.debug("Calling error handler.")
@@ -529,6 +523,9 @@ class StateMachine(Generic[T]):
                 "Busy serving another thread."
             )
 
+        self._trigger(transition)
+
+    def _trigger(self, transition: Transition):
         try:
             logger.debug(
                 "Triggering state transition [%s]: %s → %s"
@@ -607,9 +604,6 @@ class StateMachine(Generic[T]):
         finally:
             self._inner_lock.release()
             self._state_applied.set()
-
-            # with self._state_set_condition:
-            #    self._state_set_condition.notify()
 
     def _set_state(self, state: State):
         previous_state = self._current_state
