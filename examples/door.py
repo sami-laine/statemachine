@@ -6,7 +6,7 @@ from statemachine import State, StateMachine
 
 # Configure logging
 logging.basicConfig(
-    format=" %(name)-12s [%(levelname)-5s] %(message)s", level=logging.DEBUG
+    format=" %(name)-12s [%(levelname)-5s] %(message)s", level=logging.INFO
 )
 logger = logging.getLogger("Door")
 

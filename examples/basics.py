@@ -61,10 +61,10 @@ class MyStateMachine(StateMachine[MyContext]):
         final_state = FinalState()
 
         # Define transitions
-        self._from_a_to_b = self.connect(a, b)                          # Manual
-        self._from_b_to_c = self.connect(b, c, lambda ctx: print(ctx))  # Manual
-        self.connect(c, d, automatic=True)                              # Automatic
-        self.finish = self.connect(d, final_state)                      # Manual
+        self._from_a_to_b = self.connect(a, b)      # Manual
+        self._from_b_to_c = self.connect(b, c)      # Manual
+        self.connect(c, d, automatic=True)          # Automatic
+        self.finish = self.connect(d, final_state)  # Manual
 
         # Sets the initial state of the machine.
         self.initial_state = a
@@ -89,8 +89,7 @@ class MyStateMachine(StateMachine[MyContext]):
 sm = MyStateMachine(context=MyContext())
 sm.start()
 
-# Wait until the machine enters state A, then manually trigger A → B
-# sm.wait(sm.a)
+# Manually trigger A → B
 sm.from_a_to_b()
 
 # Manually trigger B → C
